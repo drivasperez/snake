@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use rand::prelude::random;
 use std::time::Duration;
 
-use super::Food;
+use super::{Food, FoodCount};
 use super::{ARENA_HEIGHT, ARENA_WIDTH};
 
 struct SnakeHead {
@@ -35,9 +35,9 @@ fn spawn_snake(
 
     let (offset_x, offset_y) = match direction {
         Direction::Up => (0, -1),
-        Direction::Right => (1, 0),
+        Direction::Right => (-1, 0),
         Direction::Down => (0, 1),
-        Direction::Left => (-1, 0),
+        Direction::Left => (1, 0),
     };
 
     let tail_position = Position {
@@ -165,6 +165,7 @@ fn snake_eating(
     mut commands: Commands,
     snake_timer: ResMut<SnakeMoveTimer>,
     mut growth_events: ResMut<Events<GrowthEvent>>,
+    mut food_count: ResMut<FoodCount>,
     food_positions: Query<With<Food, (Entity, &Position)>>,
     head_positions: Query<With<SnakeHead, &Position>>,
 ) {
@@ -176,6 +177,7 @@ fn snake_eating(
         for (ent, food_pos) in food_positions.iter() {
             if food_pos == head_pos {
                 commands.despawn(ent);
+                food_count.0 -= 1;
                 growth_events.send(GrowthEvent);
             }
         }
