@@ -19,6 +19,8 @@ struct SnakeSegments(Vec<Entity>);
 #[derive(Default)]
 struct LastTailPosition(Option<Position>);
 
+struct MovementDuration(u64);
+
 struct GrowthEvent;
 struct GameOverEvent;
 
@@ -27,6 +29,22 @@ fn spawn_snake(
     materials: Res<Materials>,
     mut segments: ResMut<SnakeSegments>,
 ) {
+    let direction: Direction = random();
+    let head_x = (ARENA_WIDTH / 2) as i32;
+    let head_y = (ARENA_HEIGHT / 2) as i32;
+
+    let (offset_x, offset_y) = match direction {
+        Direction::Up => (0, -1),
+        Direction::Right => (1, 0),
+        Direction::Down => (0, 1),
+        Direction::Left => (-1, 0),
+    };
+
+    let tail_position = Position {
+        x: head_x + offset_x,
+        y: head_y + offset_y,
+    };
+
     segments.0 = vec![
         commands
             .spawn(SpriteComponents {
@@ -39,17 +57,13 @@ fn spawn_snake(
             })
             .with(SnakeSegment)
             .with(Position {
-                x: (ARENA_WIDTH / 2) as i32,
-                y: (ARENA_HEIGHT / 2) as i32,
+                x: head_x,
+                y: head_y,
             })
             .with(Size::square(0.8))
             .current_entity()
             .unwrap(),
-        spawn_segment(
-            &mut commands,
-            &materials.segment_material,
-            Position { x: 3, y: 2 },
-        ),
+        spawn_segment(&mut commands, &materials.segment_material, tail_position),
     ];
 }
 
@@ -128,6 +142,8 @@ fn snake_growth(
     last_tail_position: Res<LastTailPosition>,
     growth_events: Res<Events<GrowthEvent>>,
     mut segments: ResMut<SnakeSegments>,
+    mut movement_timer: ResMut<SnakeMoveTimer>,
+    mut movement_duration: ResMut<MovementDuration>,
     mut growth_reader: Local<EventReader<GrowthEvent>>,
     materials: Res<Materials>,
 ) {
@@ -137,6 +153,11 @@ fn snake_growth(
             &materials.segment_material,
             last_tail_position.0.unwrap(),
         ));
+
+        if movement_duration.0 >= 20 {
+            movement_duration.0 -= 10;
+            movement_timer.0 = Timer::new(Duration::from_millis(movement_duration.0), true);
+        }
     }
 }
 
@@ -188,6 +209,7 @@ fn game_over(
     game_over_events: Res<Events<GameOverEvent>>,
     materials: Res<Materials>,
     segments_res: ResMut<SnakeSegments>,
+    mut movement_timer: ResMut<SnakeMoveTimer>,
     food: Query<With<Food, Entity>>,
     segments: Query<With<SnakeSegment, Entity>>,
 ) {
@@ -195,6 +217,7 @@ fn game_over(
         for ent in food.iter().chain(segments.iter()) {
             commands.despawn(ent);
         }
+        movement_timer.0 = Timer::new(Duration::from_millis(350), true);
 
         spawn_snake(commands, materials, segments_res);
     }
@@ -208,7 +231,8 @@ impl Plugin for SnakePlugin {
     fn build(&self, app: &mut AppBuilder) {
         app.add_resource(SnakeMoveTimer(Timer::new(Duration::from_millis(350), true)))
             .add_resource(SnakeSegments::default())
-            .add_resource(LastTailPosition::default());
+            .add_resource(LastTailPosition::default())
+            .add_resource(MovementDuration(350));
 
         app.add_startup_system_to_stage("game_setup", spawn_snake.system())
             .add_system(snake_movement.system())

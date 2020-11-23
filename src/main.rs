@@ -8,8 +8,8 @@ mod snake;
 
 use snake::SnakePlugin;
 
-const ARENA_WIDTH: u32 = 50;
-const ARENA_HEIGHT: u32 = 50;
+const ARENA_WIDTH: u32 = 25;
+const ARENA_HEIGHT: u32 = 25;
 
 struct Materials {
     head_material: Handle<ColorMaterial>,
