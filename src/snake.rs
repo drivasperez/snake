@@ -52,9 +52,7 @@ fn spawn_snake(
                 sprite: Sprite::new(Vec2::new(10.0, 10.0)),
                 ..Default::default()
             })
-            .with(SnakeHead {
-                direction: random(),
-            })
+            .with(SnakeHead { direction })
             .with(SnakeSegment)
             .with(Position {
                 x: head_x,
