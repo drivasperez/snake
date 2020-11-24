@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use rand::prelude::random;
 use std::time::Duration;
 
-use super::{Food, FoodCount};
+use super::{Food, GameEvent};
 use super::{ARENA_HEIGHT, ARENA_WIDTH};
 
 struct SnakeHead {
@@ -20,9 +20,6 @@ struct SnakeSegments(Vec<Entity>);
 struct LastTailPosition(Option<Position>);
 
 struct MovementDuration(u64);
-
-struct GrowthEvent;
-struct GameOverEvent;
 
 fn spawn_snake(
     mut commands: Commands,
@@ -70,7 +67,7 @@ fn snake_movement(
     snake_timer: ResMut<SnakeMoveTimer>,
     segments: ResMut<SnakeSegments>,
     mut last_tail_position: ResMut<LastTailPosition>,
-    mut game_over_events: ResMut<Events<GameOverEvent>>,
+    mut game_events: ResMut<Events<GameEvent>>,
     mut heads: Query<(Entity, &mut SnakeHead)>,
     mut positions: Query<&mut Position>,
 ) {
@@ -123,7 +120,7 @@ fn snake_movement(
             || head_pos.y as u32 >= ARENA_HEIGHT
             || segment_positions.contains(&head_pos)
         {
-            game_over_events.send(GameOverEvent);
+            game_events.send(GameEvent::GameOver);
         }
 
         segment_positions
@@ -138,14 +135,14 @@ fn snake_movement(
 fn snake_growth(
     mut commands: Commands,
     last_tail_position: Res<LastTailPosition>,
-    growth_events: Res<Events<GrowthEvent>>,
+    growth_events: Res<Events<GameEvent>>,
     mut segments: ResMut<SnakeSegments>,
     mut movement_timer: ResMut<SnakeMoveTimer>,
     mut movement_duration: ResMut<MovementDuration>,
-    mut growth_reader: Local<EventReader<GrowthEvent>>,
+    mut growth_reader: Local<EventReader<GameEvent>>,
     materials: Res<Materials>,
 ) {
-    if growth_reader.iter(&growth_events).next().is_some() {
+    if let Some(GameEvent::Growth) = growth_reader.iter(&growth_events).next() {
         segments.0.push(spawn_segment(
             &mut commands,
             &materials.segment_material,
@@ -162,8 +159,7 @@ fn snake_growth(
 fn snake_eating(
     mut commands: Commands,
     snake_timer: ResMut<SnakeMoveTimer>,
-    mut growth_events: ResMut<Events<GrowthEvent>>,
-    mut food_count: ResMut<FoodCount>,
+    mut growth_events: ResMut<Events<GameEvent>>,
     food_positions: Query<With<Food, (Entity, &Position)>>,
     head_positions: Query<With<SnakeHead, &Position>>,
 ) {
@@ -175,8 +171,7 @@ fn snake_eating(
         for (ent, food_pos) in food_positions.iter() {
             if food_pos == head_pos {
                 commands.despawn(ent);
-                food_count.0 -= 1;
-                growth_events.send(GrowthEvent);
+                growth_events.send(GameEvent::Growth);
             }
         }
     }
@@ -205,15 +200,15 @@ fn spawn_segment(
 
 fn game_over(
     mut commands: Commands,
-    mut reader: Local<EventReader<GameOverEvent>>,
-    game_over_events: Res<Events<GameOverEvent>>,
+    mut reader: Local<EventReader<GameEvent>>,
+    events: Res<Events<GameEvent>>,
     materials: Res<Materials>,
     segments_res: ResMut<SnakeSegments>,
     mut movement_timer: ResMut<SnakeMoveTimer>,
     food: Query<With<Food, Entity>>,
     segments: Query<With<SnakeSegment, Entity>>,
 ) {
-    if reader.iter(&game_over_events).next().is_some() {
+    if let Some(GameEvent::GameOver) = reader.iter(&events).next() {
         for ent in food.iter().chain(segments.iter()) {
             commands.despawn(ent);
         }
@@ -241,6 +236,6 @@ impl Plugin for SnakePlugin {
             .add_system(snake_growth.system())
             .add_system(game_over.system());
 
-        app.add_event::<GrowthEvent>().add_event::<GameOverEvent>();
+        app.add_event::<GameEvent>();
     }
 }

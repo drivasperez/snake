@@ -8,6 +8,14 @@ mod snake;
 
 use snake::SnakePlugin;
 
+#[derive(Debug)]
+enum GameEvent {
+    Growth,
+    GameOver,
+    SpawnedFood,
+    FoodRotted,
+}
+
 const ARENA_WIDTH: u32 = 25;
 const ARENA_HEIGHT: u32 = 25;
 const FOOD_SPAWN_RATE: u64 = 2000;
@@ -46,6 +54,7 @@ fn main() {
         .add_system(size_scaling.system())
         .add_system(food_spawner.system())
         .add_system(food_despawner.system())
+        .add_system(food_count.system())
         .add_plugins(DefaultPlugins)
         .run();
 }
@@ -112,8 +121,9 @@ fn food_spawner(
     mut commands: Commands,
     materials: Res<Materials>,
     time: Res<Time>,
+    mut events: ResMut<Events<GameEvent>>,
     mut timer: Local<FoodSpawnTimer>,
-    mut live_food: ResMut<FoodCount>,
+    live_food: Res<FoodCount>,
 ) {
     timer.0.tick(time.delta_seconds);
     if timer.0.finished && live_food.0 <= 10 {
@@ -133,21 +143,36 @@ fn food_spawner(
             })
             .with(Size::square(0.8));
 
-        live_food.0 += 1;
+        events.send(GameEvent::SpawnedFood);
     }
 }
 
 fn food_despawner(
     mut commands: Commands,
     time: Res<Time>,
-    mut food_count: ResMut<FoodCount>,
+    mut events: ResMut<Events<GameEvent>>,
     mut food: Query<With<Food, (Entity, &mut LifeSpan)>>,
 ) {
     for (ent, mut age) in food.iter_mut() {
         age.0.tick(time.delta_seconds);
         if age.0.finished {
             commands.despawn(ent);
-            food_count.0 -= 1;
+            events.send(GameEvent::FoodRotted);
+        }
+    }
+}
+
+fn food_count(
+    mut food_count: ResMut<FoodCount>,
+    events: Res<Events<GameEvent>>,
+    mut reader: Local<EventReader<GameEvent>>,
+) {
+    for event in reader.iter(&events) {
+        use GameEvent::*;
+        match event {
+            SpawnedFood => food_count.0 += 1,
+            Growth | FoodRotted => food_count.0 -= 1,
+            GameOver => food_count.0 = 0,
         }
     }
 }
