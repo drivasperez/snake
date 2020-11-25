@@ -14,8 +14,8 @@ use components::{
 mod components;
 mod systems;
 
-const ARENA_WIDTH: u32 = 25;
-const ARENA_HEIGHT: u32 = 25;
+const ARENA_WIDTH: u32 = 15;
+const ARENA_HEIGHT: u32 = 15;
 const FOOD_SPAWN_RATE: u64 = 2000;
 const FOOD_LIFE_SPAN_MS: u64 = 5000;
 

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use rand::prelude::random;
+use rand::prelude::*;
 
 use crate::{
     components::{
@@ -133,15 +133,15 @@ pub fn snake_movement(
         }
 
         if head_pos.x < 0 {
-            head_pos.x = ARENA_WIDTH as i32;
+            head_pos.x = (ARENA_WIDTH - 1) as i32;
         }
         if head_pos.y < 0 {
-            head_pos.y = ARENA_HEIGHT as i32;
+            head_pos.y = (ARENA_HEIGHT - 1) as i32;
         }
-        if head_pos.x > ARENA_WIDTH as i32 {
+        if head_pos.x >= ARENA_WIDTH as i32 {
             head_pos.x = 0;
         }
-        if head_pos.y > ARENA_HEIGHT as i32 {
+        if head_pos.y >= ARENA_HEIGHT as i32 {
             head_pos.y = 0;
         }
 
@@ -251,8 +251,22 @@ pub fn food_spawner(
     mut events: ResMut<Events<GameEvent>>,
     mut timer: Local<FoodSpawnTimer>,
     live_food: Res<FoodCount>,
+    snake_positions: Query<With<SnakeSegment, &Position>>,
 ) {
     timer.0.tick(time.delta_seconds);
+
+    let banned_positions: Vec<&Position> = snake_positions.iter().collect();
+    let positions: Vec<Position> = (0..ARENA_WIDTH as i32)
+        .flat_map(|x| {
+            (0..ARENA_HEIGHT as i32)
+                .map(|y| Position { x, y })
+                .collect::<Vec<Position>>()
+        })
+        .filter(|pos| !banned_positions.contains(&pos))
+        .collect();
+
+    let position = *positions.choose(&mut rand::thread_rng()).unwrap();
+
     if timer.0.finished && live_food.0 <= 10 {
         commands
             .spawn(SpriteComponents {
@@ -264,10 +278,7 @@ pub fn food_spawner(
                 Duration::from_millis(FOOD_LIFE_SPAN_MS),
                 false,
             )))
-            .with(Position {
-                x: (random::<f32>() * ARENA_WIDTH as f32) as i32,
-                y: (random::<f32>() * ARENA_HEIGHT as f32) as i32,
-            })
+            .with(position)
             .with(Size::square(0.8));
 
         events.send(GameEvent::SpawnedFood);
@@ -298,7 +309,11 @@ pub fn food_count(
         use GameEvent::*;
         match event {
             SpawnedFood => food_count.0 += 1,
-            Growth | FoodRotted => food_count.0 -= 1,
+            Growth | FoodRotted => {
+                if food_count.0 > 0 {
+                    food_count.0 -= 1
+                }
+            }
             GameOver => food_count.0 = 0,
         }
     }
