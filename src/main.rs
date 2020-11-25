@@ -19,12 +19,18 @@ const ARENA_HEIGHT: u32 = 15;
 const FOOD_SPAWN_RATE: u64 = 2000;
 const FOOD_LIFE_SPAN_MS: u64 = 5000;
 
-fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn setup(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    asset_server: Res<AssetServer>,
+) {
+    let head_handle = asset_server.load("segment.png");
+    let segment_handle = asset_server.load("segment.png");
     commands
         .spawn(Camera2dComponents::default())
         .insert_resource(Materials {
-            head_material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
-            segment_material: materials.add(Color::rgb(0.3, 0.3, 0.3).into()),
+            head_material: materials.add(head_handle.into()),
+            segment_material: materials.add(segment_handle.into()),
             food_material: materials.add(Color::rgb(1.0, 0.0, 1.0).into()),
         });
 }

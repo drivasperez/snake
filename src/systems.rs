@@ -215,6 +215,7 @@ pub fn spawn_segment(
     commands
         .spawn(SpriteComponents {
             material: material.clone(),
+            sprite: Sprite::new(Vec2::new(10.0, 10.0)),
             ..Default::default()
         })
         .with(SnakeSegment)
