@@ -98,17 +98,18 @@ pub fn snake_movement(
         last_tail_position.0 = Some(*segment_positions.last().unwrap());
 
         let mut head_pos = positions.get_mut(head_entity).unwrap();
-        let dir: Direction = if keyboard_input.pressed(KeyCode::Left) {
-            Direction::Left
-        } else if keyboard_input.pressed(KeyCode::Down) {
-            Direction::Down
-        } else if keyboard_input.pressed(KeyCode::Up) {
-            Direction::Up
-        } else if keyboard_input.pressed(KeyCode::Right) {
-            Direction::Right
-        } else {
-            head.direction
-        };
+        let dir: Direction =
+            if keyboard_input.pressed(KeyCode::Left) || keyboard_input.pressed(KeyCode::A) {
+                Direction::Left
+            } else if keyboard_input.pressed(KeyCode::Down) || keyboard_input.pressed(KeyCode::S) {
+                Direction::Down
+            } else if keyboard_input.pressed(KeyCode::Up) || keyboard_input.pressed(KeyCode::W) {
+                Direction::Up
+            } else if keyboard_input.pressed(KeyCode::Right) || keyboard_input.pressed(KeyCode::D) {
+                Direction::Right
+            } else {
+                head.direction
+            };
 
         if dir != head.direction.opposite() {
             head.direction = dir;
