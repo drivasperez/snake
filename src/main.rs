@@ -1,31 +1,23 @@
 use bevy::prelude::*;
 use bevy::render::pass::ClearColor;
-use rand::prelude::random;
 use std::time::Duration;
+use systems::{
+    food_count, food_despawner, food_spawner, game_over, position_translation, size_scaling,
+    snake_eating, snake_growth, snake_movement, snake_timer, spawn_snake,
+};
 
-mod direction;
-mod snake;
+use components::{
+    FoodCount, GameEvent, LastTailPosition, Materials, MovementDuration, SnakeMoveTimer,
+    SnakeSegments,
+};
 
-use snake::SnakePlugin;
-
-#[derive(Debug)]
-enum GameEvent {
-    Growth,
-    GameOver,
-    SpawnedFood,
-    FoodRotted,
-}
+mod components;
+mod systems;
 
 const ARENA_WIDTH: u32 = 25;
 const ARENA_HEIGHT: u32 = 25;
 const FOOD_SPAWN_RATE: u64 = 2000;
 const FOOD_LIFE_SPAN_MS: u64 = 5000;
-
-struct Materials {
-    head_material: Handle<ColorMaterial>,
-    segment_material: Handle<ColorMaterial>,
-    food_material: Handle<ColorMaterial>,
-}
 
 fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
     commands
@@ -38,141 +30,38 @@ fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
 }
 
 fn main() {
-    App::build()
-        .add_resource(WindowDescriptor {
-            title: String::from("Snake!"),
-            width: 800,
-            height: 800,
-            ..Default::default()
-        })
-        .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
-        .add_resource(FoodCount(0))
-        .add_startup_system(setup.system())
-        .add_startup_stage("game_setup")
-        .add_plugin(SnakePlugin)
+    let mut app = App::build();
+
+    app.add_resource(WindowDescriptor {
+        title: String::from("Snake!"),
+        width: 800,
+        height: 800,
+        ..Default::default()
+    })
+    .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+    .add_resource(FoodCount(0))
+    .add_resource(SnakeMoveTimer(Timer::new(Duration::from_millis(350), true)))
+    .add_resource(SnakeSegments::default())
+    .add_resource(LastTailPosition::default())
+    .add_resource(MovementDuration(350));
+
+    app.add_startup_system(setup.system())
+        .add_startup_stage("game_setup");
+
+    app.add_startup_system_to_stage("game_setup", spawn_snake.system())
+        .add_system(snake_movement.system())
+        .add_system(snake_timer.system())
+        .add_system(snake_eating.system())
+        .add_system(snake_growth.system())
+        .add_system(game_over.system())
         .add_system(position_translation.system())
         .add_system(size_scaling.system())
         .add_system(food_spawner.system())
         .add_system(food_despawner.system())
-        .add_system(food_count.system())
-        .add_plugins(DefaultPlugins)
-        .run();
-}
+        .add_system(food_count.system());
 
-#[derive(Default, Copy, Clone, Eq, PartialEq, Hash)]
-struct Position {
-    x: i32,
-    y: i32,
-}
+    app.add_event::<GameEvent>();
+    app.add_plugins(DefaultPlugins);
 
-struct Size {
-    width: f32,
-    height: f32,
-}
-
-impl Size {
-    pub fn square(x: f32) -> Self {
-        Self {
-            width: x,
-            height: x,
-        }
-    }
-}
-
-fn size_scaling(windows: Res<Windows>, mut q: Query<(&Size, &mut Sprite)>) {
-    let window = windows.get_primary().unwrap();
-    for (sprite_size, mut sprite) in q.iter_mut() {
-        sprite.size = Vec2::new(
-            sprite_size.width / ARENA_WIDTH as f32 * window.width() as f32,
-            sprite_size.height / ARENA_HEIGHT as f32 * window.height() as f32,
-        );
-    }
-}
-
-fn position_translation(windows: Res<Windows>, mut q: Query<(&Position, &mut Transform)>) {
-    let convert = |pos, bound_window, bound_game| {
-        let tile_size = bound_window / bound_game;
-        pos / bound_game * bound_window - (bound_window / 2.) + (tile_size / 2.)
-    };
-
-    let window = windows.get_primary().unwrap();
-    for (pos, mut transform) in q.iter_mut() {
-        transform.translation = Vec3::new(
-            convert(pos.x as f32, window.width() as f32, ARENA_WIDTH as f32),
-            convert(pos.y as f32, window.height() as f32, ARENA_HEIGHT as f32),
-            0.0,
-        );
-    }
-}
-
-struct Food;
-struct FoodCount(u32);
-struct LifeSpan(Timer);
-
-struct FoodSpawnTimer(Timer);
-
-impl Default for FoodSpawnTimer {
-    fn default() -> Self {
-        Self(Timer::new(Duration::from_millis(FOOD_SPAWN_RATE), true))
-    }
-}
-
-fn food_spawner(
-    mut commands: Commands,
-    materials: Res<Materials>,
-    time: Res<Time>,
-    mut events: ResMut<Events<GameEvent>>,
-    mut timer: Local<FoodSpawnTimer>,
-    live_food: Res<FoodCount>,
-) {
-    timer.0.tick(time.delta_seconds);
-    if timer.0.finished && live_food.0 <= 10 {
-        commands
-            .spawn(SpriteComponents {
-                material: materials.food_material.clone(),
-                ..Default::default()
-            })
-            .with(Food)
-            .with(LifeSpan(Timer::new(
-                Duration::from_millis(FOOD_LIFE_SPAN_MS),
-                false,
-            )))
-            .with(Position {
-                x: (random::<f32>() * ARENA_WIDTH as f32) as i32,
-                y: (random::<f32>() * ARENA_HEIGHT as f32) as i32,
-            })
-            .with(Size::square(0.8));
-
-        events.send(GameEvent::SpawnedFood);
-    }
-}
-
-fn food_despawner(
-    mut commands: Commands,
-    time: Res<Time>,
-    mut events: ResMut<Events<GameEvent>>,
-    mut food: Query<With<Food, (Entity, &mut LifeSpan)>>,
-) {
-    for (ent, mut age) in food.iter_mut() {
-        age.0.tick(time.delta_seconds);
-        if age.0.finished {
-            commands.despawn(ent);
-            events.send(GameEvent::FoodRotted);
-        }
-    }
-}
-
-fn food_count(
-    mut food_count: ResMut<FoodCount>,
-    events: Res<Events<GameEvent>>,
-    mut reader: Local<EventReader<GameEvent>>,
-) {
-    for event in reader.iter(&events) {
-        use GameEvent::*;
-        match event {
-            SpawnedFood => food_count.0 += 1,
-            Growth | FoodRotted => food_count.0 -= 1,
-            GameOver => food_count.0 = 0,
-        }
-    }
+    app.run();
 }

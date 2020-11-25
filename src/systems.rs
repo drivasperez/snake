@@ -1,27 +1,44 @@
-use super::{Materials, Position, Size};
-use crate::direction::Direction;
-use bevy::prelude::*;
-use rand::prelude::random;
 use std::time::Duration;
 
-use super::{Food, GameEvent};
-use super::{ARENA_HEIGHT, ARENA_WIDTH};
+use bevy::prelude::*;
+use rand::prelude::random;
 
-struct SnakeHead {
-    direction: Direction,
+use crate::{
+    components::{
+        Direction, Food, FoodCount, FoodSpawnTimer, GameEvent, LastTailPosition, LifeSpan,
+        Materials, MovementDuration, Position, Size, SnakeHead, SnakeMoveTimer, SnakeSegment,
+        SnakeSegments,
+    },
+    ARENA_HEIGHT, ARENA_WIDTH, FOOD_LIFE_SPAN_MS,
+};
+
+pub fn size_scaling(windows: Res<Windows>, mut q: Query<(&Size, &mut Sprite)>) {
+    let window = windows.get_primary().unwrap();
+    for (sprite_size, mut sprite) in q.iter_mut() {
+        sprite.size = Vec2::new(
+            sprite_size.width / ARENA_WIDTH as f32 * window.width() as f32,
+            sprite_size.height / ARENA_HEIGHT as f32 * window.height() as f32,
+        );
+    }
 }
 
-struct SnakeSegment;
+pub fn position_translation(windows: Res<Windows>, mut q: Query<(&Position, &mut Transform)>) {
+    let convert = |pos, bound_window, bound_game| {
+        let tile_size = bound_window / bound_game;
+        pos / bound_game * bound_window - (bound_window / 2.) + (tile_size / 2.)
+    };
 
-#[derive(Default)]
-struct SnakeSegments(Vec<Entity>);
+    let window = windows.get_primary().unwrap();
+    for (pos, mut transform) in q.iter_mut() {
+        transform.translation = Vec3::new(
+            convert(pos.x as f32, window.width() as f32, ARENA_WIDTH as f32),
+            convert(pos.y as f32, window.height() as f32, ARENA_HEIGHT as f32),
+            0.0,
+        );
+    }
+}
 
-#[derive(Default)]
-struct LastTailPosition(Option<Position>);
-
-struct MovementDuration(u64);
-
-fn spawn_snake(
+pub fn spawn_snake(
     mut commands: Commands,
     materials: Res<Materials>,
     mut segments: ResMut<SnakeSegments>,
@@ -62,7 +79,7 @@ fn spawn_snake(
     ];
 }
 
-fn snake_movement(
+pub fn snake_movement(
     keyboard_input: Res<Input<KeyCode>>,
     snake_timer: ResMut<SnakeMoveTimer>,
     segments: ResMut<SnakeSegments>,
@@ -132,7 +149,7 @@ fn snake_movement(
     }
 }
 
-fn snake_growth(
+pub fn snake_growth(
     mut commands: Commands,
     last_tail_position: Res<LastTailPosition>,
     growth_events: Res<Events<GameEvent>>,
@@ -156,7 +173,7 @@ fn snake_growth(
     }
 }
 
-fn snake_eating(
+pub fn snake_eating(
     mut commands: Commands,
     snake_timer: ResMut<SnakeMoveTimer>,
     mut growth_events: ResMut<Events<GameEvent>>,
@@ -177,11 +194,11 @@ fn snake_eating(
     }
 }
 
-fn snake_timer(time: Res<Time>, mut snake_timer: ResMut<SnakeMoveTimer>) {
+pub fn snake_timer(time: Res<Time>, mut snake_timer: ResMut<SnakeMoveTimer>) {
     snake_timer.0.tick(time.delta_seconds);
 }
 
-fn spawn_segment(
+pub fn spawn_segment(
     commands: &mut Commands,
     material: &Handle<ColorMaterial>,
     position: Position,
@@ -198,7 +215,7 @@ fn spawn_segment(
         .unwrap()
 }
 
-fn game_over(
+pub fn game_over(
     mut commands: Commands,
     mut reader: Local<EventReader<GameEvent>>,
     events: Res<Events<GameEvent>>,
@@ -218,24 +235,62 @@ fn game_over(
     }
 }
 
-pub(crate) struct SnakeMoveTimer(Timer);
+pub fn food_spawner(
+    mut commands: Commands,
+    materials: Res<Materials>,
+    time: Res<Time>,
+    mut events: ResMut<Events<GameEvent>>,
+    mut timer: Local<FoodSpawnTimer>,
+    live_food: Res<FoodCount>,
+) {
+    timer.0.tick(time.delta_seconds);
+    if timer.0.finished && live_food.0 <= 10 {
+        commands
+            .spawn(SpriteComponents {
+                material: materials.food_material.clone(),
+                ..Default::default()
+            })
+            .with(Food)
+            .with(LifeSpan(Timer::new(
+                Duration::from_millis(FOOD_LIFE_SPAN_MS),
+                false,
+            )))
+            .with(Position {
+                x: (random::<f32>() * ARENA_WIDTH as f32) as i32,
+                y: (random::<f32>() * ARENA_HEIGHT as f32) as i32,
+            })
+            .with(Size::square(0.8));
 
-pub struct SnakePlugin;
+        events.send(GameEvent::SpawnedFood);
+    }
+}
 
-impl Plugin for SnakePlugin {
-    fn build(&self, app: &mut AppBuilder) {
-        app.add_resource(SnakeMoveTimer(Timer::new(Duration::from_millis(350), true)))
-            .add_resource(SnakeSegments::default())
-            .add_resource(LastTailPosition::default())
-            .add_resource(MovementDuration(350));
+pub fn food_despawner(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut events: ResMut<Events<GameEvent>>,
+    mut food: Query<With<Food, (Entity, &mut LifeSpan)>>,
+) {
+    for (ent, mut age) in food.iter_mut() {
+        age.0.tick(time.delta_seconds);
+        if age.0.finished {
+            commands.despawn(ent);
+            events.send(GameEvent::FoodRotted);
+        }
+    }
+}
 
-        app.add_startup_system_to_stage("game_setup", spawn_snake.system())
-            .add_system(snake_movement.system())
-            .add_system(snake_timer.system())
-            .add_system(snake_eating.system())
-            .add_system(snake_growth.system())
-            .add_system(game_over.system());
-
-        app.add_event::<GameEvent>();
+pub fn food_count(
+    mut food_count: ResMut<FoodCount>,
+    events: Res<Events<GameEvent>>,
+    mut reader: Local<EventReader<GameEvent>>,
+) {
+    for event in reader.iter(&events) {
+        use GameEvent::*;
+        match event {
+            SpawnedFood => food_count.0 += 1,
+            Growth | FoodRotted => food_count.0 -= 1,
+            GameOver => food_count.0 = 0,
+        }
     }
 }
