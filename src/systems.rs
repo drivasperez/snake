@@ -132,12 +132,20 @@ pub fn snake_movement(
             }
         }
 
-        if head_pos.x < 0
-            || head_pos.y < 0
-            || head_pos.x as u32 >= ARENA_WIDTH
-            || head_pos.y as u32 >= ARENA_HEIGHT
-            || segment_positions.contains(&head_pos)
-        {
+        if head_pos.x < 0 {
+            head_pos.x = ARENA_WIDTH as i32;
+        }
+        if head_pos.y < 0 {
+            head_pos.y = ARENA_HEIGHT as i32;
+        }
+        if head_pos.x > ARENA_WIDTH as i32 {
+            head_pos.x = 0;
+        }
+        if head_pos.y > ARENA_HEIGHT as i32 {
+            head_pos.y = 0;
+        }
+
+        if segment_positions.contains(&head_pos) {
             game_events.send(GameEvent::GameOver);
         }
 
